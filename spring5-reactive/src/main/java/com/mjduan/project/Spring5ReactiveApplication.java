@@ -9,6 +9,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import static org.springframework.web.reactive.function.server.RequestPredicates.GET;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.util.function.Tuple2;
@@ -16,16 +18,23 @@ import reactor.util.function.Tuple2;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.core.userdetails.MapUserDetailsRepository;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.reactive.function.server.RouterFunction;
+import org.springframework.web.reactive.function.server.RouterFunctions;
+import org.springframework.web.reactive.function.server.ServerRequest;
+import org.springframework.web.reactive.function.server.ServerResponse;
 
 interface MovieRepository extends ReactiveMongoRepository<Movie, String> {
 
@@ -38,7 +47,54 @@ public class Spring5ReactiveApplication {
         SpringApplication.run(Spring5ReactiveApplication.class, args);
     }
 
+    @Bean
+    RouterFunction<?> route(MovieHandler handler) {
+        return RouterFunctions.route(GET("/movies"), handler::all)
+                .andRoute(GET("/movies/{movieId}"), handler::byId)
+                .andRoute(GET("/movies/{movieId}/events"), handler::events);
+    }
+
+    @Component
+    public static class MovieHandler {
+
+        private final MovieService movieService;
+
+        public MovieHandler(MovieService movieService) {
+            this.movieService = movieService;
+        }
+
+        public Mono<ServerResponse> all(ServerRequest serverRequest) {
+            return ServerResponse.ok().body(movieService.all(), Movie.class);
+        }
+
+        public Mono<ServerResponse> byId(ServerRequest serverRequest) {
+            String movidId = serverRequest.pathVariable("movieId");
+            return ServerResponse.ok().body(movieService.byId(movidId), Movie.class);
+        }
+
+        public Mono<ServerResponse> events(ServerRequest serverRequest) {
+            String movidId = serverRequest.pathVariable("movieId");
+            return ServerResponse.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(movieService.events(movidId), MovieEvent.class);
+        }
+    }
+
 }
+
+/*@Configuration
+@EnableWebFluxSecurity
+class SecurityConfig {
+
+    @Bean
+    UserDetailsRepository userDetailsRepository() {
+        //curl -v http://localhost:8080/movies
+        //curl -ujoshLong:password -v http://localhost:8080/movies
+        //curl -umjduan:password -v http://localhost:8080/movies | json_pp
+        UserDetails joshLong = User.withUsername("joshLong").roles("USER", "ADMIN").password("password").build();
+        UserDetails mjduan = User.withUsername("mjduan").roles("USER").password("password").build();
+        return new MapUserDetailsRepository(joshLong, mjduan);
+    }
+
+}*/
 
 @Component
 class MovieCLR implements CommandLineRunner {
@@ -60,6 +116,7 @@ class MovieCLR implements CommandLineRunner {
     }
 }
 
+/*
 @RestController
 @RequestMapping("/movies")
 class MovieRestController {
@@ -84,7 +141,7 @@ class MovieRestController {
     public Flux<MovieEvent> events(@PathVariable String movieId) {
         return movieService.events(movieId);
     }
-}
+}*/
 
 @Service
 class MovieService {
